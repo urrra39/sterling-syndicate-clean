@@ -71,14 +71,6 @@ flowchart LR
   LLM -.->|drafts only| CRM
 ```
 
-## Canonical repository
-
-**Source of truth:** [github.com/urrra39/sterling-syndicate](https://github.com/urrra39/sterling-syndicate)
-
-If you also have a `sterling-syndicate-core-*` clone from a redeploy experiment, treat
-that as disposable — point `git remote origin` at `sterling-syndicate` and archive
-or delete the extra public repo so there is only one public surface.
-
 ## Live app (always on — no laptop needed)
 
 Deployed on Render. These URLs stay online 24/7:
