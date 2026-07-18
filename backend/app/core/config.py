@@ -63,6 +63,12 @@ class Settings(BaseSettings):
     )
     environment: str = Field(default="development", alias="ENVIRONMENT")
     testing: bool = Field(default=False, alias="TESTING")
+    # When true, rate-limit / client IP uses X-Forwarded-For (only safe behind a
+    # trusted reverse proxy such as Render/nginx). Spoofable if left true on a
+    # publicly reachable origin that is NOT behind such a proxy.
+    trust_proxy: bool = Field(default=False, alias="TRUST_PROXY")
+    # If non-empty, POST /auth/signup requires a matching invite_code.
+    signup_invite_code: str = Field(default="", alias="SIGNUP_INVITE_CODE")
 
     # Payment step-up authorization. When True, POST /confirm-payment requires the
     # caller to be an approver/owner AND to present a valid step-up MFA code (TOTP)
@@ -78,25 +84,30 @@ class Settings(BaseSettings):
     # Dual-provider LLM routing
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     openai_base_url: str = Field(default="https://api.openai.com/v1", alias="OPENAI_BASE_URL")
-    openai_writer_model: str = Field(default="gpt-5.5", alias="OPENAI_WRITER_MODEL")
-    openai_execution_model: str = Field(default="gpt-5.6", alias="OPENAI_EXECUTION_MODEL")
+    # Defaults use widely available model IDs; override via env for newer tiers.
+    openai_writer_model: str = Field(default="gpt-4o", alias="OPENAI_WRITER_MODEL")
+    openai_execution_model: str = Field(default="gpt-4o", alias="OPENAI_EXECUTION_MODEL")
     openai_execution_model_medium: str = Field(
-        default="gpt-5.5", alias="OPENAI_EXECUTION_MODEL_MEDIUM"
+        default="gpt-4o-mini", alias="OPENAI_EXECUTION_MODEL_MEDIUM"
     )
-    anthropic_opus_model: str = Field(default="claude-opus-4-8", alias="ANTHROPIC_OPUS_MODEL")
-    anthropic_tier2_model: str = Field(default="claude-sonnet-5", alias="ANTHROPIC_TIER2_MODEL")
+    anthropic_opus_model: str = Field(default="claude-opus-4-20250514", alias="ANTHROPIC_OPUS_MODEL")
+    anthropic_tier2_model: str = Field(
+        default="claude-sonnet-4-20250514", alias="ANTHROPIC_TIER2_MODEL"
+    )
 
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
     anthropic_base_url: str = Field(
         default="https://api.anthropic.com",
         alias="ANTHROPIC_BASE_URL",
     )
-    anthropic_scout_model: str = Field(default="claude-sonnet-5", alias="ANTHROPIC_SCOUT_MODEL")
+    anthropic_scout_model: str = Field(
+        default="claude-sonnet-4-20250514", alias="ANTHROPIC_SCOUT_MODEL"
+    )
 
     # Legacy single-key fallback (maps to OpenAI writer if OPENAI_API_KEY unset)
     llm_api_key: str = Field(default="", alias="LLM_API_KEY")
     llm_base_url: str = Field(default="https://api.openai.com/v1", alias="LLM_BASE_URL")
-    llm_model: str = Field(default="gpt-5.5", alias="LLM_MODEL")
+    llm_model: str = Field(default="gpt-4o", alias="LLM_MODEL")
 
     # RAG / Chroma
     chroma_persist_dir: str = Field(default="./data/chroma_db", alias="CHROMA_PERSIST_DIR")
@@ -131,8 +142,10 @@ class Settings(BaseSettings):
     sandbox_image: str = Field(default="python:3.11-slim", alias="SANDBOX_IMAGE")
     sandbox_node_image: str = Field(default="node:20-slim", alias="SANDBOX_NODE_IMAGE")
     sandbox_rust_image: str = Field(default="rust:1.83-slim", alias="SANDBOX_RUST_IMAGE")
+    # Default FALSE: subprocess fallback is NOT a security boundary. Only enable
+    # for local/dev when Docker is unavailable and you accept host execution risk.
     sandbox_allow_subprocess_fallback: bool = Field(
-        default=True, alias="SANDBOX_ALLOW_SUBPROCESS_FALLBACK"
+        default=False, alias="SANDBOX_ALLOW_SUBPROCESS_FALLBACK"
     )
     captcha_screenshot_dir: str = Field(
         default="./data/captcha_pauses", alias="CAPTCHA_SCREENSHOT_DIR"
@@ -209,6 +222,11 @@ class Settings(BaseSettings):
         Otherwise a deploy that forgets JWT_SECRET_KEY silently runs on a public,
         known signing key — anyone could forge valid tokens.
         """
+        # If a TOTP secret is configured, step-up is mandatory — a bare session
+        # cookie must not release the payment kill-switch.
+        if (self.payment_stepup_totp_secret or "").strip():
+            object.__setattr__(self, "payment_stepup_required", True)
+
         if self.testing:
             return self
 

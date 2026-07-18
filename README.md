@@ -10,7 +10,9 @@ The Sterling Syndicate is **human-in-the-loop by design**, not by omission. Free
 - Never sends a proposal, chat reply, or contract message on its own — every outbound artifact is an editable draft labeled `ai_generated`
 - Ingests only from sources that allow programmatic access (e.g. RemoteOK API, We Work Remotely RSS) or from text you paste yourself
 - Requires an explicit **“I sent this myself”** action after you copy a draft out manually
-- **Refuses Playwright / anti-detect marketplace scraping** — Scout uses jittered public API/RSS only
+- **Hard-refuses marketplace login automation** — Playwright stealth helpers exist only for
+  allowed / operator-driven sessions and raise on Upwork/Fiverr/etc. hosts; Scout itself
+  uses jittered public API/RSS only (no marketplace cookie reuse)
 
 That constraint is what makes the tool usable in the real world.
 
@@ -18,10 +20,10 @@ That constraint is what makes the tool usable in the real world.
 
 ```mermaid
 flowchart TD
-  Scout[Scout_Agent Claude Sonnet 5 JSON] --> Writer
+  Scout[Scout_Agent Anthropic JSON] --> Writer
   RAG[(Chroma portfolio RAG)] --> Writer
   Price[Pricing engine] --> Writer
-  Writer[Writer_Agent GPT-5.5] --> Draft[Proposal draft queued]
+  Writer[Writer_Agent OpenAI] --> Draft[Proposal draft queued]
   Draft --> Human{Human reviews}
   Human -->|I sent this myself| Sent[status=sent]
   Human -->|Mark rejected| Reflect[Reflector_Agent]
@@ -32,10 +34,10 @@ flowchart TD
 
 | Agent | Model | Role |
 |-------|-------|------|
-| Scout | `claude-sonnet-5` | Score/filter jobs — structured JSON, thinking disabled, temp 0.1 |
-| Writer | `gpt-5.5` | RAG cover letter — temp 0.6, low reasoning effort |
-| Negotiator | Sonnet 5 JSON | 3 labeled reply drafts |
-| Reflector | Sonnet 5 JSON | On rejection, append instruction_delta to memory |
+| Scout | `claude-sonnet-4-20250514` (override via env) | Score/filter jobs — structured JSON, temp 0.1 |
+| Writer | `gpt-4o` (override via env) | RAG cover letter — temp 0.6 |
+| Negotiator | Anthropic tier-2 JSON | 3 labeled reply drafts |
+| Reflector | Anthropic tier-2 JSON | On rejection, append instruction_delta to memory |
 
 Alerts (Telegram/Discord) fire when match ≥ `HIGH_MATCH_THRESHOLD` — notification only.
 
@@ -68,6 +70,14 @@ flowchart LR
   MATCH --> DB
   LLM -.->|drafts only| CRM
 ```
+
+## Canonical repository
+
+**Source of truth:** [github.com/urrra39/sterling-syndicate](https://github.com/urrra39/sterling-syndicate)
+
+If you also have a `sterling-syndicate-core-*` clone from a redeploy experiment, treat
+that as disposable — point `git remote origin` at `sterling-syndicate` and archive
+or delete the extra public repo so there is only one public surface.
 
 ## Live app (always on — no laptop needed)
 
@@ -112,10 +122,10 @@ Containers: `sterling-syndicate-db`, `sterling-syndicate-backend`, `sterling-syn
 |-------|------|
 | Backend | Python 3.11+, FastAPI, SQLAlchemy, Alembic |
 | Database | PostgreSQL 16 + pgvector (or SQLite local fallback if Docker is unavailable) |
-| Matching | Deterministic hashing embedder (384-d); swap to MiniLM later |
-| LLM | OpenAI-compatible chat API (optional; template fallback if unset) |
+| Matching | Deterministic hashing embedder (384-d cosine) — not neural embeddings; swap via `EMBEDDING_MODEL` later |
+| LLM | OpenAI / Anthropic APIs (optional; template fallback if unset) |
 | Frontend | React, TypeScript, TailwindCSS, Vite, Recharts |
-| Auth | JWT + bcrypt + SMTP password reset |
+| Auth | HttpOnly cookie JWT + bcrypt + SMTP password reset (token never in JSON body) |
 | Infra | Docker Compose |
 
 ## Auth & Password Reset
@@ -153,7 +163,7 @@ The Sterling Syndicate/
 The Sterling Syndicate hardens failure modes that typically break freelance-automation demos:
 
 ### 1. AI-resilient semantic extraction (not CSS scrapers)
-Marketplace UIs change constantly; hardcoded Playwright selectors are a liability **and** violate our ToS stance. Instead, already-fetched content (RemoteOK JSON, WWR RSS, manual paste, or user-supplied HTML) is parsed by **Claude Sonnet 5 structured JSON** for title / description / budget / category, with a deterministic heuristic fallback. No login automation. No anti-detect browser stack.
+Marketplace UIs change constantly; hardcoded Playwright selectors are a liability **and** violate our ToS stance. Instead, already-fetched content (RemoteOK JSON, WWR RSS, manual paste, or user-supplied HTML) is parsed by **structured LLM JSON** for title / description / budget / category, with a deterministic heuristic fallback. No marketplace login automation. Stealth browser helpers hard-refuse Upwork/Fiverr hosts.
 
 ### 2. Prompt-injection guardrails (Aegis-style with OutputSanitizer)
 Untrusted job posts and client messages pass through `prompt_guard` **before** Writer / Negotiator. Patterns such as “ignore previous instructions”, system-role hijacks, and jailbreak markers are neutralized; remaining text is wrapped in `<<<UNTRUSTED_*>>>` envelopes so models treat it as data, not commands. `OutputSanitizer` strips those meta-tags from API responses before the CRM UI ever sees them.
@@ -178,10 +188,13 @@ When a deal is won or a client claims payment, the contract enters `pending_paym
 - [x] AI artifacts labeled `ai_generated` in DB + UI
 - [x] OutputSanitizer strips `<<<UNTRUSTED_*>>>` / system tags from API responses
 - [x] Fernet field-level encryption at rest for sensitive client data (`FIELD_ENCRYPTION_KEY`)
-- [x] Global Rate Limiting (120 requests/minute) to prevent DDoS.
-- [x] Strict Security Headers (HSTS, X-Content-Type-Options, X-Frame-Options).
-- [x] Global Error Masking (500 Internal Server Errors are masked to prevent stack trace leaks).
-- [x] `pip-audit` (backend) and `npm audit` (frontend) wired into CI. Direct deps pinned to their highest installable secure floors; remaining advisories are transitive to the pinned `langgraph 0.2.x` agent stack and revisited on its next upgrade.
+- [x] Global rate limiting (120/min, process-local — use `UVICORN_WORKERS=1` or Redis at scale)
+- [x] CSRF header required for cookie-authenticated mutating requests
+- [x] `TRUST_PROXY` gate on X-Forwarded-For (spoof-safe when false)
+- [x] Strict Security Headers (HSTS, X-Content-Type-Options, X-Frame-Options; CSP on static/nginx)
+- [x] Global Error Masking (500s never leak stack traces)
+- [x] `pip-audit` (backend) and `npm audit` (frontend) wired into CI
+- [x] Optional `SIGNUP_INVITE_CODE` to lock open registration
 
 ## Data retention
 

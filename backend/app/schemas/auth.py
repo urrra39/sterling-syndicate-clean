@@ -145,13 +145,8 @@ class UserCreate(BaseModel):
     password: str = Field(..., min_length=8, max_length=128)
     skills: List[str] = Field(default_factory=list, max_length=50)
     portfolio_summary: Optional[str] = Field(default=None, max_length=5000)
-
-    @field_validator("email")
-    @classmethod
-    def _gmail_only(cls, v: EmailStr) -> EmailStr:
-        if not str(v).lower().endswith("@gmail.com"):
-            raise ValueError("Only @gmail.com addresses are accepted")
-        return v
+    # Required only when SIGNUP_INVITE_CODE is set on the server.
+    invite_code: Optional[str] = Field(default=None, max_length=128)
 
     @field_validator("skills")
     @classmethod
@@ -184,14 +179,19 @@ class UserPublic(BaseModel):
     email: EmailStr
     skills: List[str]
     portfolio_summary: Optional[str] = None
+    role: str = "owner"
     is_active: bool
     created_at: datetime
 
 
 class TokenResponse(BaseModel):
-    """JWT access token response."""
+    """Auth success payload.
 
-    access_token: str
+    ``access_token`` is always empty — the JWT is delivered only via HttpOnly
+    cookie so script cannot read it. Kept for API shape compatibility.
+    """
+
+    access_token: str = ""
     token_type: str = "bearer"
     user: UserPublic
 

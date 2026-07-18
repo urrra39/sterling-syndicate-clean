@@ -33,19 +33,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Dependency vulnerability audit (pip-audit)
-        # Report-only. Direct deps are pinned to their highest installable secure
-        # floors (cryptography>=48, langgraph>=0.3.34, python-dotenv>=1.2.1, ...).
-        # The residual advisories fall into two buckets that cannot be actioned:
-        #   1. Fix version not yet published to PyPI (starlette, python-multipart,
-        #      langsmith, requests, urllib3, click, orjson, filelock) — already at
-        #      their newest release.
-        #   2. Test-only, no runtime exposure (pytest — fix needs Python >=3.10).
-        # Surfacing the report in CI logs without blocking merges; revisit when the
-        # upstream fixes land on PyPI.
-        continue-on-error: true
+        # Gates on *direct* deps that have a published fix (see scripts/gate_pip_audit.py).
+        # Transitive / unfixed advisories are logged but do not fail the job.
         run: |
           pip install pip-audit
-          pip-audit -r requirements.txt
+          pip-audit -l -f json -o "$RUNNER_TEMP/pip-audit.json" --progress-spinner off || true
+          python ../scripts/gate_pip_audit.py "$RUNNER_TEMP/pip-audit.json"
       - name: Run pytest
         run: pytest -q
 

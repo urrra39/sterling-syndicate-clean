@@ -18,7 +18,12 @@ from app.services.notify import notify_budget_pause, notify_budget_warning, noti
 
 # USD per 1M tokens — approximate public list prices (ponytail: update when rates change)
 MODEL_RATES_PER_MTOK: dict[str, Tuple[float, float]] = {
-    # (input_$/MTok, output_$/MTok)
+    # (input_$/MTok, output_$/MTok) — approximate public list prices
+    "gpt-4o": (2.5, 10.0),
+    "gpt-4o-mini": (0.15, 0.6),
+    "claude-sonnet-4-20250514": (3.0, 15.0),
+    "claude-opus-4-20250514": (15.0, 75.0),
+    # Legacy / override aliases still recognized for cost estimates
     "gpt-5.6": (5.0, 20.0),
     "gpt-5.5": (2.5, 10.0),
     "gpt-5.5-extra": (5.0, 20.0),
@@ -144,14 +149,18 @@ def elite_model_for(effort: EffortLevel) -> str:
 
     if effort == EffortLevel.HIGH:
         # Prefer configured elite OpenAI; Opus available via ANTHROPIC_OPUS_MODEL for Anthropic path
-        return settings.openai_execution_model or "gpt-5.6"
-    return settings.openai_execution_model_medium or settings.openai_writer_model or "gpt-5.5"
+        return settings.openai_execution_model or "gpt-4o"
+    return settings.openai_execution_model_medium or settings.openai_writer_model or "gpt-4o-mini"
 
 
 def tier2_model() -> str:
     from app.core.config import settings
 
-    return settings.anthropic_tier2_model or settings.anthropic_scout_model or "claude-sonnet-5"
+    return (
+        settings.anthropic_tier2_model
+        or settings.anthropic_scout_model
+        or "claude-sonnet-4-20250514"
+    )
 
 
 def select_model(contract: Contract) -> str:

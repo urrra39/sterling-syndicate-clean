@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, login, fetchMe, listLeads, normalizeApiUrl } from "./api";
+import {
+  ApiError,
+  login,
+  fetchMe,
+  listLeads,
+  normalizeApiUrl,
+  safeExternalUrl,
+} from "./api";
 
 /** Build a minimal Response-like object for the mocked fetch. */
 function jsonResponse(
@@ -56,14 +63,15 @@ describe("api request()", () => {
     const res = await login({ email: "jane@gmail.com", password: "secret123" });
     expect(res.access_token).toBe("tok");
 
-    // Content-Type is set and credentials are included for cookie auth.
+    // Content-Type, CSRF header, and credentials for cookie auth.
     const [, init] = fetchMock.mock.calls[0]!;
     const headers = init.headers as Headers;
     expect(headers.get("Content-Type")).toBe("application/json");
+    expect(headers.get("X-Requested-With")).toBe("XMLHttpRequest");
     expect(init.credentials).toBe("include");
   });
 
-  it("attaches a Bearer token when one is provided", async () => {
+  it("attaches a Bearer token only for a JWT-shaped token", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({
         id: "1",
@@ -77,9 +85,36 @@ describe("api request()", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await fetchMe("my-token");
+    await fetchMe("hdr.payload.sig");
     const [, init] = fetchMock.mock.calls[0]!;
-    expect((init.headers as Headers).get("Authorization")).toBe("Bearer my-token");
+    expect((init.headers as Headers).get("Authorization")).toBe("Bearer hdr.payload.sig");
+    expect((init.headers as Headers).get("X-Requested-With")).toBe("XMLHttpRequest");
+  });
+
+  it("does not attach Bearer for the cookie sentinel", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        id: "1",
+        name: "Jane",
+        email: "jane@gmail.com",
+        skills: [],
+        portfolio_summary: null,
+        is_active: true,
+        created_at: "2026-01-01T00:00:00",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchMe("cookie");
+    const [, init] = fetchMock.mock.calls[0]!;
+    expect((init.headers as Headers).get("Authorization")).toBeNull();
+  });
+
+  it("safeExternalUrl allows only http(s)", () => {
+    expect(safeExternalUrl("https://example.com/a")).toBe("https://example.com/a");
+    expect(safeExternalUrl("http://example.com")).toBe("http://example.com/");
+    expect(safeExternalUrl("javascript:alert(1)")).toBeNull();
+    expect(safeExternalUrl("not a url")).toBeNull();
   });
 
   it("throws ApiError with the server detail string on a 4xx", async () => {

@@ -6,14 +6,14 @@ const inputClass =
   "w-full rounded-none border border-[#1c3527] bg-[#050e09] px-3 py-2 text-zinc-100 placeholder-zinc-600 outline-none transition-all duration-300 focus:border-[#C5A059] focus:ring-1 focus:ring-[#C5A059]/40";
 
 export default function LoginPage() {
-  const { login, token } = useAuth();
+  const { login, user } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (token) {
+  if (user) {
     return <Navigate to="/" replace />;
   }
 

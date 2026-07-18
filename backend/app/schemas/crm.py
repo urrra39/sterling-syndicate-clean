@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import List, Optional
+from urllib.parse import urlparse
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -9,11 +10,29 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.services.output_sanitizer import sanitize_optional, sanitize_output
 
 
+def _http_https_url(v: Optional[str]) -> Optional[str]:
+    """Reject javascript:/data:/etc. — only http(s) external links."""
+    if v is None:
+        return None
+    trimmed = v.strip()
+    if not trimmed:
+        return None
+    parsed = urlparse(trimmed)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("url must be an http(s) URL with a host")
+    return trimmed
+
+
 class LeadCreateManual(BaseModel):
     title: str = Field(default="", max_length=500)
     raw_text: str = Field(..., min_length=20, max_length=50000)
     url: Optional[str] = Field(default=None, max_length=2048)
     category: Optional[str] = Field(default=None, max_length=120)
+
+    @field_validator("url")
+    @classmethod
+    def _safe_url(cls, v: Optional[str]) -> Optional[str]:
+        return _http_https_url(v)
 
 
 class LeadIngestRemote(BaseModel):

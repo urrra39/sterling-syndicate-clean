@@ -10,7 +10,7 @@ import LeadDetailPage from "./pages/LeadDetailPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { token, loading } = useAuth();
+  const { user, loading } = useAuth();
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center font-sans text-zinc-300">
@@ -18,7 +18,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  if (!token) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 

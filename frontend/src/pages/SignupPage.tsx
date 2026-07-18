@@ -2,24 +2,23 @@ import { FormEvent, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 
-const GMAIL_RE = /^[A-Za-z0-9._%+-]+@gmail\.com$/i;
-
 const ALLOWED_SKILLS = new Set<string>(["python", "javascript", "typescript", "java", "kotlin", "swift", "go", "golang", "rust", "c", "c++", "c#", "php", "ruby", "scala", "elixir", "dart", "r", "sql", "html", "css", "sass", "tailwind", "bootstrap", "react", "react native", "vue", "angular", "svelte", "nextjs", "next.js", "nuxt", "flutter", "electron", "vite", "webpack", "node", "nodejs", "node.js", "express", "nestjs", "fastapi", "django", "flask", "spring", "spring boot", "laravel", "rails", ".net", "asp.net", "postgresql", "postgres", "mysql", "sqlite", "mongodb", "redis", "elasticsearch", "clickhouse", "snowflake", "bigquery", "dynamodb", "cassandra", "docker", "kubernetes", "terraform", "ansible", "linux", "bash", "nginx", "aws", "gcp", "azure", "vercel", "cloudflare", "ci/cd", "github actions", "git", "graphql", "rest", "grpc", "websockets", "oauth", "jwt", "stripe", "kafka", "rabbitmq", "celery", "airflow", "spark", "etl", "dbt", "pandas", "numpy", "scikit-learn", "tensorflow", "pytorch", "opencv", "machine learning", "deep learning", "data science", "data engineering", "nlp", "llm", "openai", "langchain", "rag", "prompt engineering", "pytest", "jest", "cypress", "playwright", "selenium", "tdd", "figma", "ui/ux", "ui/ux design", "web design", "seo", "devops", "security", "penetration testing", "blockchain", "solidity", "web3"]);
 
 const inputClass =
   "w-full rounded-none border border-[#1c3527] bg-[#050e09] px-3 py-2 text-zinc-100 placeholder-zinc-600 outline-none transition-all duration-300 focus:border-[#C5A059] focus:ring-1 focus:ring-[#C5A059]/40";
 
 export default function SignupPage() {
-  const { signup, token } = useAuth();
+  const { signup, user } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [skills, setSkills] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (token) {
+  if (user) {
     return <Navigate to="/" replace />;
   }
 
@@ -29,10 +28,6 @@ export default function SignupPage() {
     setToast(null);
 
     const trimmedEmail = email.trim().toLowerCase();
-    if (!GMAIL_RE.test(trimmedEmail)) {
-      setError("Only @gmail.com addresses are accepted. Please sign up with your Gmail account.");
-      return;
-    }
 
     const skillList = skills
       .split(",")
@@ -48,7 +43,13 @@ export default function SignupPage() {
 
     setSubmitting(true);
     try {
-      await signup(name.trim(), trimmedEmail, password, skillList);
+      await signup(
+        name.trim(),
+        trimmedEmail,
+        password,
+        skillList,
+        inviteCode.trim() || undefined,
+      );
       setToast("Account created — opening your CRM pipeline…");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Signup failed";
@@ -101,9 +102,7 @@ export default function SignupPage() {
               type="email"
               required
               autoComplete="email"
-              placeholder="yourname@gmail.com"
-              pattern="[A-Za-z0-9._%+-]+@gmail\.com"
-              title="Only @gmail.com addresses are accepted"
+              placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className={inputClass}
@@ -130,6 +129,20 @@ export default function SignupPage() {
               placeholder="python, fastapi, react"
               value={skills}
               onChange={(e) => setSkills(e.target.value)}
+              className={inputClass}
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm text-zinc-300">
+              Invite code{" "}
+              <span className="text-zinc-500">(only if your admin requires one)</span>
+            </span>
+            <input
+              type="text"
+              autoComplete="off"
+              placeholder="optional"
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value)}
               className={inputClass}
             />
           </label>

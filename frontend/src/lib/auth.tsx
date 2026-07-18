@@ -11,9 +11,11 @@ import * as api from "./api";
 import type { UserPublic } from "./api";
 
 type AuthContextValue = {
-  /** @deprecated Token is now stored in an HttpOnly cookie. This field is
-   *  kept for backward compatibility with pages that pass it to API helpers.
-   *  Guard checks should use `user` instead. */
+  /**
+   * Session sentinel only — the real JWT lives in an HttpOnly cookie and is
+   * never readable from JS. Non-null means "authenticated" (value is always
+   * the literal `"cookie"` after a successful hydrate/login).
+   */
   token: string | null;
   user: UserPublic | null;
   loading: boolean;
@@ -23,18 +25,16 @@ type AuthContextValue = {
     email: string,
     password: string,
     skills?: string[],
+    inviteCode?: string,
   ) => Promise<void>;
   logout: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const COOKIE_SENTINEL = "cookie";
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // The real JWT lives in an HttpOnly cookie sent automatically by the
-  // browser.  We keep a `token` string in React state purely so existing
-  // page components that destructure `{ token }` from useAuth() still
-  // compile and can pass it to API helpers (which now rely on the cookie,
-  // ignoring an empty Bearer header).
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<UserPublic | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,10 +44,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function hydrate() {
       try {
         // Cookie is sent automatically via credentials:"include"
-        const me = await api.fetchMe("");
+        const me = await api.fetchMe(COOKIE_SENTINEL);
         if (!cancelled) {
           setUser(me);
-          setToken("cookie");  // non-null sentinel so guard checks pass
+          setToken(COOKIE_SENTINEL);
         }
       } catch {
         if (!cancelled) {
@@ -66,8 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await api.login({ email, password });
-    // The HttpOnly cookie is set by the server response.
-    setToken(res.access_token);
+    // Server sets HttpOnly cookie; body.access_token is intentionally empty.
+    setToken(COOKIE_SENTINEL);
     setUser(res.user);
   }, []);
 
@@ -77,9 +77,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email: string,
       password: string,
       skills: string[] = [],
+      inviteCode?: string,
     ) => {
-      const res = await api.signup({ name, email, password, skills });
-      setToken(res.access_token);
+      const res = await api.signup({
+        name,
+        email,
+        password,
+        skills,
+        invite_code: inviteCode || undefined,
+      });
+      setToken(COOKIE_SENTINEL);
       setUser(res.user);
     },
     [],

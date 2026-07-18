@@ -37,24 +37,45 @@ _COOKIE_MAX_AGE = settings.access_token_expire_minutes * 60
 # than the global API limit.
 _FORGOT_PW_LIMIT = 5
 _FORGOT_PW_WINDOW_SECONDS = 900  # 5 requests / 15 min per client
+_AUTH_LIMIT = 20
+_AUTH_WINDOW_SECONDS = 900  # 20 login/signup attempts / 15 min per client
 
 
 def _set_auth_cookie(response: Response, token: str) -> None:
-    """Attach JWT as an HttpOnly, Secure, SameSite=Strict cookie."""
+    """Attach JWT as an HttpOnly cookie.
+
+    Production uses SameSite=None + Secure so a split-origin SPA (e.g. two
+    *.onrender.com hosts on the public-suffix list) can still send the cookie
+    on credentialed cross-origin fetches. Localhost uses Lax without Secure.
+    The JWT is NEVER returned in the JSON body — that would re-expose it to XSS.
+    """
+    if settings.is_production:
+        secure = True
+        samesite: str = "none"
+    else:
+        secure = False
+        samesite = "lax"
     response.set_cookie(
         key=_COOKIE_NAME,
         value=token,
         httponly=True,
-        secure=settings.is_production,
-        samesite="strict",
+        secure=secure,
+        samesite=samesite,
         max_age=_COOKIE_MAX_AGE,
         path="/",
     )
 
 
 def _clear_auth_cookie(response: Response) -> None:
-    """Remove the auth cookie."""
-    response.delete_cookie(key=_COOKIE_NAME, path="/")
+    """Remove the auth cookie (must mirror Secure/SameSite used at set time)."""
+    if settings.is_production:
+        response.delete_cookie(
+            key=_COOKIE_NAME, path="/", secure=True, samesite="none"
+        )
+    else:
+        response.delete_cookie(
+            key=_COOKIE_NAME, path="/", secure=False, samesite="lax"
+        )
 
 
 def _hash_token(raw: str) -> str:
@@ -66,8 +87,24 @@ def _hash_token(raw: str) -> str:
     response_model=TokenResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def signup(payload: UserCreate, response: Response, db: DbSession) -> TokenResponse:
-    """Register a new freelancer account and return a JWT."""
+def signup(
+    payload: UserCreate, request: Request, response: Response, db: DbSession
+) -> TokenResponse:
+    """Register a new freelancer workspace (tenant owner) and set the auth cookie."""
+    rate_limit(
+        client_key(request, "auth-signup"),
+        limit=_AUTH_LIMIT,
+        window_seconds=_AUTH_WINDOW_SECONDS,
+    )
+    invite_required = (settings.signup_invite_code or "").strip()
+    if invite_required:
+        provided = (payload.invite_code or "").strip()
+        if not provided or provided != invite_required:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Valid invite code required for signup.",
+            )
+
     existing = db.scalar(select(User).where(User.email == payload.email.lower()))
     if existing is not None:
         raise HTTPException(
@@ -80,11 +117,13 @@ def signup(payload: UserCreate, response: Response, db: DbSession) -> TokenRespo
         {s.strip().lower() for s in payload.skills if s and s.strip()}
     )
 
+    # Each signup creates its own single-tenant workspace; the creator is owner.
     user = User(
         name=payload.name.strip(),
         email=payload.email.lower(),
         password_hash=hash_password(payload.password),
         skills=skills,
+        role="owner",
         portfolio_summary=(
             payload.portfolio_summary.strip()
             if payload.portfolio_summary
@@ -100,15 +139,23 @@ def signup(payload: UserCreate, response: Response, db: DbSession) -> TokenRespo
         extra_claims={"tv": user.token_version},
     )
     _set_auth_cookie(response, token)
+    # Cookie-only: never put the JWT in the JSON body (XSS-stealable).
     return TokenResponse(
-        access_token=token,
+        access_token="",
         user=UserPublic.model_validate(user),
     )
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(payload: UserLogin, response: Response, db: DbSession) -> TokenResponse:
-    """Authenticate with email/password and return a JWT."""
+def login(
+    payload: UserLogin, request: Request, response: Response, db: DbSession
+) -> TokenResponse:
+    """Authenticate with email/password and set the HttpOnly auth cookie."""
+    rate_limit(
+        client_key(request, "auth-login"),
+        limit=_AUTH_LIMIT,
+        window_seconds=_AUTH_WINDOW_SECONDS,
+    )
     user = db.scalar(select(User).where(User.email == payload.email.lower()))
     if user is None or not verify_password(payload.password, user.password_hash):
         # Same message for both cases — avoid user enumeration
@@ -128,7 +175,7 @@ def login(payload: UserLogin, response: Response, db: DbSession) -> TokenRespons
     )
     _set_auth_cookie(response, token)
     return TokenResponse(
-        access_token=token,
+        access_token="",
         user=UserPublic.model_validate(user),
     )
 

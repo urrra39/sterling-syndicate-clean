@@ -14,11 +14,16 @@ os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("TESTING", "true")
 os.environ.setdefault("FORCE_SQLITE", "true")
+# Tests run without DinD — allow the documented non-boundary Python fallback
+# so sandbox unit tests can exercise timeouts. Production defaults remain false.
+os.environ.setdefault("SANDBOX_ALLOW_SUBPROCESS_FALLBACK", "true")
 os.environ.setdefault(
     "FIELD_ENCRYPTION_KEY", "u-mVc6PRVzrLQk8ZZXGK8WpvIjRTpsQ2AG6-iiqIKvk="
 )
 
-# Clear settings cache so env overrides take effect
-from app.core.config import get_settings  # noqa: E402
+# Clear settings cache AND rebind the module-level singleton so services that
+# imported `from app.core.config import settings` see the test env values.
+from app.core import config as _config  # noqa: E402
 
-get_settings.cache_clear()
+_config.get_settings.cache_clear()
+_config.settings = _config.get_settings()

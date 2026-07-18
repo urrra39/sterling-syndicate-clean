@@ -28,15 +28,30 @@ export type UserPublic = {
   email: string;
   skills: string[];
   portfolio_summary: string | null;
+  role?: string;
   is_active: boolean;
   created_at: string;
 };
 
 export type TokenResponse = {
+  /** Always empty — JWT is HttpOnly-cookie only. Kept for API shape compat. */
   access_token: string;
   token_type: string;
   user: UserPublic;
 };
+
+/** Allow only http(s) URLs for clickable external links (blocks javascript: etc.). */
+export function safeExternalUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  try {
+    const u = new URL(trimmed);
+    if (u.protocol === "http:" || u.protocol === "https:") return u.href;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
 
 export type PipelineStatus =
   | "new"
@@ -177,7 +192,13 @@ async function request<T>(
   if (!(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  // CSRF guard for cookie sessions (required by backend CsrfGuardMiddleware).
+  headers.set("X-Requested-With", "XMLHttpRequest");
+  // Only attach Bearer for a real JWT — never for the "cookie" sentinel.
+  // Production auth is cookie-only; Bearer remains for API/tools that still mint JWTs.
+  if (token && token !== "cookie" && token.includes(".")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
 
   let res: Response;
   try {
@@ -186,7 +207,7 @@ async function request<T>(
     const msg = err instanceof Error ? err.message : String(err);
     if (/failed to fetch|networkerror|load failed|network request failed/i.test(msg)) {
       throw new Error(
-        `Cannot reach API at ${API_URL}. Is the backend running on :8000? ` +
+        `Cannot reach API. Is the backend running? ` +
           `(If Docker/Postgres is down, the API should auto-fall back to SQLite.)`,
       );
     }
@@ -231,6 +252,7 @@ export const signup = (body: {
   password: string;
   skills?: string[];
   portfolio_summary?: string;
+  invite_code?: string;
 }) =>
   request<TokenResponse>("/auth/signup", { method: "POST", body: JSON.stringify(body) });
 

@@ -74,7 +74,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if request.method == "OPTIONS" or path == "/health" or path.startswith("/health/"):
             return await call_next(request)
-        
+
         try:
             rate_limit(
                 client_key(request, "global"),
@@ -89,8 +89,42 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             for header, value in SECURITY_HEADERS.items():
                 response.headers[header] = value
             return response
-            
+
         return await call_next(request)
+
+
+class CsrfGuardMiddleware(BaseHTTPMiddleware):
+    """Require a custom header for cookie-authenticated mutating requests.
+
+    Browsers do not attach arbitrary headers on classic cross-site form posts,
+    so ``X-Requested-With: XMLHttpRequest`` blocks simple CSRF against the
+    HttpOnly session cookie. Bearer Authorization remains CSRF-resistant on its
+    own. HMAC payment webhooks and health probes are exempt. Disabled under
+    TESTING so pytest TestClient stays lightweight.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        if settings.testing or settings.environment.lower() == "test":
+            return await call_next(request)
+        if request.method in {"GET", "HEAD", "OPTIONS"}:
+            return await call_next(request)
+        path = request.url.path
+        if path == "/health" or path.startswith("/health/"):
+            return await call_next(request)
+        if path.endswith("/payment-webhook"):
+            return await call_next(request)
+        auth = request.headers.get("authorization", "")
+        if auth.lower().startswith("bearer ") and len(auth) > 8:
+            return await call_next(request)
+        if request.headers.get("x-requested-with", "").lower() == "xmlhttprequest":
+            return await call_next(request)
+        response = JSONResponse(
+            status_code=403,
+            content={"detail": "Missing CSRF header (X-Requested-With)."},
+        )
+        for header, value in SECURITY_HEADERS.items():
+            response.headers[header] = value
+        return response
 
 
 @asynccontextmanager
@@ -130,7 +164,13 @@ app.add_middleware(
     # reject "*" + credentials) and a security hole. Enumerate exactly what the
     # SPA needs.
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+    ],
     expose_headers=["Content-Type", "Content-Length"],
     max_age=600,
 )
@@ -138,8 +178,9 @@ app.add_middleware(
 # Last-hop scrub: strip <<<UNTRUSTED_*>>> / <system> leaks from JSON bodies
 app.add_middleware(OutputSanitizerMiddleware)
 
-# Rate limiting (inner) then security headers (outermost user middleware) so the
-# headers are attached to every response — including 429 and 500 responses.
+# CSRF (cookie sessions) → rate limit → security headers (outermost) so 403/429/500
+# responses still carry HSTS / frame / MIME protections.
+app.add_middleware(CsrfGuardMiddleware)
 app.add_middleware(
     RateLimitMiddleware,
     limit=GLOBAL_RATE_LIMIT,

@@ -15,6 +15,7 @@ import {
   markPaid,
   markProposalSent,
   runExecution,
+  safeExternalUrl,
   setProposalOutcome,
   suggestReplies,
   updateDeliverable,
@@ -46,6 +47,7 @@ export default function LeadDetailPage() {
   const [execBusy, setExecBusy] = useState(false);
   const [execResult, setExecResult] = useState<ExecutionResult | null>(null);
   const [taskPrompt, setTaskPrompt] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
 
   const paymentLocked = !!contract && !contract.is_payment_verified;
   const budgetPaused =
@@ -134,6 +136,19 @@ export default function LeadDetailPage() {
     return <p className="text-zinc-400">{error ?? "Loading lead…"}</p>;
   }
 
+  const sourceHref = safeExternalUrl(lead.url);
+
+  async function onConfirmPayment() {
+    if (!token || !lead) return;
+    try {
+      await confirmPayment(token, lead.id, mfaCode.trim() || undefined);
+      setMfaCode("");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Confirm payment failed");
+    }
+  }
+
   return (
     <div className="space-y-8 animate-fade-in">
       <div>
@@ -146,10 +161,10 @@ export default function LeadDetailPage() {
         <p className="mt-1 text-sm text-zinc-400">
           {lead.source} · {lead.pipeline_status}
           {lead.match_score != null && <> · match {(lead.match_score * 100).toFixed(0)}%</>}
-          {lead.url && (
+          {sourceHref && (
             <>
               {" · "}
-              <a href={lead.url} target="_blank" rel="noreferrer" className="text-[#C5A059] transition-colors duration-300 hover:text-[#D4AF37]">
+              <a href={sourceHref} target="_blank" rel="noopener noreferrer" className="text-[#C5A059] transition-colors duration-300 hover:text-[#D4AF37]">
                 source link
               </a>
             </>
@@ -180,17 +195,28 @@ export default function LeadDetailPage() {
             . All Writer / Negotiator / deliverable actions are frozen until you verify
             funds in your account.
           </p>
-          <button
-            type="button"
-            onClick={() =>
-              void confirmPayment(token, lead.id)
-                .then(load)
-                .catch((e: Error) => setError(e.message))
-            }
-            className="mt-4 rounded-none bg-[#C5A059] px-4 py-2 text-sm font-bold text-[#050e09] transition-all duration-500 hover:bg-[#D4AF37]"
-          >
-            Confirm Payment Received
-          </button>
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            <label className="block text-xs text-zinc-400">
+              Step-up MFA code (if enabled)
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={12}
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value)}
+                placeholder="6-digit code"
+                className="mt-1 block w-40 rounded-none border border-[#1c3527] bg-[#050e09] px-2 py-1.5 text-sm text-zinc-100 focus:border-[#C5A059]"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void onConfirmPayment()}
+              className="rounded-none bg-[#C5A059] px-4 py-2 text-sm font-bold text-[#050e09] transition-all duration-500 hover:bg-[#D4AF37]"
+            >
+              Confirm Payment Received
+            </button>
+          </div>
         </div>
       )}
 
@@ -437,7 +463,7 @@ export default function LeadDetailPage() {
                   {s.label}
                 </p>
                 <p className="mt-1 text-xs text-[#C5A059]/80">
-                  ai_generated · Claude Sonnet 5
+                  ai_generated · LLM draft
                 </p>
                 {s.scope_creep_detected && s.out_of_scope_summary && (
                   <p className="mt-1 text-xs text-zinc-300">
@@ -654,17 +680,28 @@ export default function LeadDetailPage() {
             </ul>
             <div className="flex flex-wrap gap-2">
               {paymentLocked && token && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    void confirmPayment(token, lead.id)
-                      .then(load)
-                      .catch((e: Error) => setError(e.message))
-                  }
-                  className="rounded-none bg-[#C5A059] px-3 py-1 text-sm font-bold text-[#050e09] transition-all duration-500 hover:bg-[#D4AF37]"
-                >
-                  Confirm Payment Received
-                </button>
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="block text-xs text-zinc-400">
+                    MFA
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={12}
+                      value={mfaCode}
+                      onChange={(e) => setMfaCode(e.target.value)}
+                      placeholder="code"
+                      className="mt-1 block w-28 rounded-none border border-[#1c3527] bg-[#050e09] px-2 py-1 text-xs text-zinc-100 focus:border-[#C5A059]"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void onConfirmPayment()}
+                    className="rounded-none bg-[#C5A059] px-3 py-1 text-sm font-bold text-[#050e09] transition-all duration-500 hover:bg-[#D4AF37]"
+                  >
+                    Confirm Payment Received
+                  </button>
+                </div>
               )}
               {!paymentLocked &&
                 contract.is_payment_verified &&

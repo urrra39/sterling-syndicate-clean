@@ -1,69 +1,71 @@
-# Deploying The Sterling Syndicate (always-on) on Render
+# Deploying The Sterling Syndicate on Render
 
-This app runs locally only while your machine is on. To keep it reachable for
-other users at any time, deploy it to a host. The repo ships a Render Blueprint
-(`render.yaml`) that provisions everything in one shot.
+The repo ships a Render Blueprint (`render.yaml`) that provisions PostgreSQL,
+the FastAPI API (Docker), and the React SPA as a **static site**.
 
 ## What gets created
 
-| Service        | What it is                          | Plan |
-|----------------|-------------------------------------|------|
-| `sterling-db`  | PostgreSQL 16 (+ pgvector)          | free |
-| `sterling-api` | FastAPI backend (Docker)            | free |
-| `sterling-web` | React SPA served by nginx (Docker)  | free |
+| Service        | What it is                         | Plan | Sleeps? |
+|----------------|------------------------------------|------|---------|
+| `sterling-db`  | PostgreSQL 16 (+ pgvector)         | free | n/a (retention limits apply) |
+| `sterling-api` | FastAPI backend (Docker)           | free | Yes — ~15 min idle → cold start |
+| `sterling-web` | React SPA (**static site**, not nginx Docker) | free | **No** — static sites stay warm |
 
-> Free-plan services sleep after ~15 min idle and cold-start on the next
-> request (a few seconds). For true 24/7 with no cold starts, bump the two web
-> services to a paid plan later — no code change needed.
+Live URLs (pinned in `render.yaml` — update if Render renames the services):
+
+- App: `https://sterling-web-6u7n.onrender.com`
+- API: `https://sterling-api-6u7n.onrender.com`
+- Health: `https://sterling-api-6u7n.onrender.com/health`
+
+The GitHub Actions `keepalive` workflow pings the API every ~12 minutes to reduce
+free-tier sleep. If Actions are disabled, expect cold starts on the API.
 
 ## One-time: generate the encryption key
 
 Render auto-generates `JWT_SECRET_KEY`, but the Fernet field-encryption key must
-be created by you (it protects client data at rest). Run locally:
+be created by you:
 
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-Copy the output — you'll paste it in step 4.
-
 ## Deploy steps
 
-1. **Sign in** at <https://dashboard.render.com> (log in with GitHub).
-2. **New + → Blueprint**. Pick the `sterling-syndicate` repo. Render reads
-   `render.yaml` and shows the 3 resources above. Click **Apply**.
-3. Render builds the database first, then the API and web images. First build
-   takes ~5–8 min.
-4. **Set the two manual secrets** on the `sterling-api` service
-   (Dashboard → sterling-api → Environment):
-   - `FIELD_ENCRYPTION_KEY` = the Fernet key from above **(required)**
-   - `OPENAI_API_KEY` = your key **(only if you use the AI drafting features)**
-   Save — the service redeploys automatically.
-5. When all three show **Live**, open the `sterling-web` URL
-   (`https://sterling-web.onrender.com`). Sign up and you're in.
+1. **Sign in** at <https://dashboard.render.com> (GitHub login).
+2. **New + → Blueprint**. Pick this repo (`sterling-syndicate` or your
+   `sterling-syndicate-core-*` clone). Click **Apply**.
+3. First build takes ~5–8 min (DB → API Docker → static web).
+4. On **sterling-api → Environment**, set:
+   - `FIELD_ENCRYPTION_KEY` = Fernet key **(required)**
+   - `OPENAI_API_KEY` = optional, for AI drafts
+   - `SIGNUP_INVITE_CODE` = optional; if set, signup requires that invite
+   - `PAYMENT_STEPUP_TOTP_SECRET` = optional base32 TOTP secret (if set, step-up MFA is **forced on**)
+     ```bash
+     python -c "import secrets,base64; print(base64.b32encode(secrets.token_bytes(20)).decode())"
+     ```
+5. Confirm these are already set by the blueprint (edit if your URLs differ):
+   - `FRONTEND_URL=https://sterling-web-6u7n.onrender.com`
+   - `CORS_ORIGINS=https://sterling-web-6u7n.onrender.com`
+   - `TRUST_PROXY=true`
+   - `UVICORN_WORKERS=1`
+6. On **sterling-web**, confirm `VITE_API_URL=https://sterling-api-6u7n.onrender.com`
+   (baked at **build** time — change + redeploy the static site if the API host moves).
+7. Open the web URL, sign up, and use the app.
 
-## How the wiring works (no manual URLs needed)
+## Auth model (cookie-only)
 
-- `DATABASE_URL` is injected from `sterling-db`. The backend auto-rewrites the
-  `postgres://` scheme to the `postgresql+psycopg://` driver form it needs.
-- `CORS_ORIGINS` is set from the `sterling-web` host, and `VITE_API_URL` from the
-  `sterling-api` host. Render provides bare hostnames; both the backend (CORS)
-  and frontend (fetch base) prepend `https://` automatically.
-- Migrations (`alembic upgrade head`) run on every backend boot, so the schema
-  and the pgvector extension are created before traffic is served.
+Login/signup set an **HttpOnly** cookie (`SameSite=None; Secure` in production).
+The JWT is **not** returned in the JSON body. The SPA sends
+`credentials: "include"` plus `X-Requested-With: XMLHttpRequest` (CSRF guard).
 
-## Not deployed: the DinD execution sandbox
+## Not deployed: DinD execution sandbox
 
-`docker-compose.yml` includes a Docker-in-Docker service for the Execution
-Agent's untrusted-code sandbox. Render has no privileged DinD, so it's excluded
-here. The whole product except that one feature runs normally, and
-`SANDBOX_ALLOW_SUBPROCESS_FALLBACK` stays `false` so no untrusted code ever runs
-directly on the host. To use that feature, deploy `docker-compose.yml` on a VPS
-you control instead.
+`docker-compose.yml` includes rootless Docker-in-Docker for the Execution Agent.
+Render has no privileged DinD, so it is excluded. `SANDBOX_ALLOW_SUBPROCESS_FALLBACK`
+stays `false`. For sandboxed execution, run `docker compose up` on a VPS you control.
 
-## Custom domain (optional)
+## Custom domain
 
-Dashboard → sterling-web → Settings → Custom Domains. Add your domain, create the
-shown CNAME at your registrar. Then add that domain to the API's `CORS_ORIGINS`
-(comma-separated) so the browser calls are allowed.
-
+Dashboard → sterling-web → Custom Domains. Then update API env:
+`FRONTEND_URL`, `CORS_ORIGINS` (comma-separated), and rebuild the static site with
+the matching `VITE_API_URL` if the API also moves.
