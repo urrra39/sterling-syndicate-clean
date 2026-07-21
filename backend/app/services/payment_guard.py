@@ -7,8 +7,7 @@ is False, Writer/Negotiator/delivery endpoints MUST refuse to run.
 """
 
 from datetime import datetime, timezone
-from functools import wraps
-from typing import Any, Callable, Optional, TypeVar
+from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -18,8 +17,6 @@ from sqlalchemy.orm import Session
 from app.models.lead import Lead, PipelineStatus
 from app.models.proposal import Contract
 from app.services.notify import notify_payment_action_required
-
-F = TypeVar("F", bound=Callable[..., Any])
 
 PAYMENT_LOCK_DETAIL = (
     "PAYMENT KILL SWITCH ACTIVE: this lead is pending_payment_verification. "
@@ -109,25 +106,3 @@ def confirm_payment_received(
         lead.pipeline_status = PipelineStatus.IN_PROGRESS.value
     init_budget(contract)
     return contract
-
-
-def requires_payment_cleared(lead_id_param: str = "lead_id") -> Callable[[F], F]:
-    """Decorator for endpoints that must not run while payment is unverified.
-
-    Expects the wrapped function to receive `db` and a UUID path param named
-    `lead_id_param` (or resolve lead via deliverable elsewhere — prefer calling
-    assert_payment_cleared directly in those cases).
-    """
-
-    def decorator(fn: F) -> F:
-        @wraps(fn)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            db: Optional[Session] = kwargs.get("db")
-            lead_id = kwargs.get(lead_id_param)
-            if db is not None and lead_id is not None:
-                assert_payment_cleared(db, lead_id)
-            return fn(*args, **kwargs)
-
-        return wrapper  # type: ignore[return-value]
-
-    return decorator

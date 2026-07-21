@@ -293,5 +293,9 @@ def _parse_json_object(raw: str) -> Dict[str, Any]:
 
 def provider_available(kind: TaskKind) -> bool:
     if kind == TaskKind.ANALYTICAL:
-        return bool(settings.anthropic_api_key) or bool(settings.effective_openai_key)
+        # The analytical execution path (complete_text / complete_json with
+        # TaskKind.ANALYTICAL) strictly calls Anthropic — an OpenAI key alone
+        # cannot service it. Only report availability when the Anthropic key is
+        # present so callers fall back deterministically instead of raising.
+        return bool(settings.anthropic_api_key)
     return bool(settings.effective_openai_key)

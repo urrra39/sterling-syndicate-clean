@@ -9,7 +9,6 @@ Human-in-the-loop: every artifact is a draft; nothing is sent externally.
 import random
 import time
 from typing import Any, Dict, List, Optional, TypedDict
-from uuid import UUID
 
 from app.core.config import settings
 from app.services.agent_schemas import NegotiationDrafts, ReflectionUpdate, ScoutScore
