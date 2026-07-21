@@ -137,10 +137,13 @@ def budget_state(contract: Contract) -> BudgetState:
     frac = usage_fraction(contract)
     if frac >= 1.0 or remaining_budget(contract) <= 0:
         return BudgetState.EXHAUSTED
-    if frac >= FALLBACK_FRACTION:
-        return BudgetState.FALLBACK
+    # WARN (>=90%) is the more-severe threshold and MUST be checked before the
+    # lower FALLBACK threshold (>=85%); otherwise the FALLBACK branch swallows
+    # every high fraction and BudgetState.WARN becomes unreachable dead code.
     if frac >= WARN_FRACTION:
         return BudgetState.WARN
+    if frac >= FALLBACK_FRACTION:
+        return BudgetState.FALLBACK
     return BudgetState.OK
 
 
@@ -175,7 +178,9 @@ def select_model(contract: Contract) -> str:
             ),
         )
     effort = EffortLevel(contract.effort_level or "medium")
-    if state == BudgetState.FALLBACK:
+    # Near the cap (FALLBACK >=85% or WARN >=90%) drop to the cheaper Tier-2
+    # model to protect margin before the hard stop.
+    if state in {BudgetState.FALLBACK, BudgetState.WARN}:
         return tier2_model()
     return elite_model_for(effort)
 
