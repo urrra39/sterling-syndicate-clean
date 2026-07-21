@@ -157,6 +157,27 @@ def test_fallback_model_near_limit() -> None:
     assert "sonnet" in model.lower() or "llama" in model.lower() or "claude" in model.lower()
 
 
+def test_warn_state_is_reachable_at_90_percent() -> None:
+    """Regression: WARN (>=90%) must not be shadowed by FALLBACK (>=85%).
+
+    Previously the FALLBACK branch was checked first, so budget_state could
+    never return WARN — the >=90% band silently degraded to FALLBACK and the
+    distinct warning tier was dead code.
+    """
+    # 85%-90% band stays FALLBACK.
+    c_fallback = _contract(max_api_budget=100.0, cumulative_api_cost=87.0, effort_level="high")
+    assert budget_state(c_fallback) == BudgetState.FALLBACK
+
+    # 90%+ band (below exhaustion) is now correctly WARN.
+    c_warn = _contract(max_api_budget=100.0, cumulative_api_cost=93.0, effort_level="high")
+    assert budget_state(c_warn) == BudgetState.WARN
+
+    # Near the cap we still protect margin with the cheaper Tier-2 model,
+    # even in the WARN band — never bounce back up to the elite model.
+    model = select_model(c_warn)
+    assert "sonnet" in model.lower() or "llama" in model.lower() or "claude" in model.lower()
+
+
 def test_exhausted_select_raises() -> None:
     c = _contract(max_api_budget=10.0, cumulative_api_cost=10.0)
     with pytest.raises(HTTPException) as exc:
