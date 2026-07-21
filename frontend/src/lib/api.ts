@@ -1,16 +1,56 @@
 /** Extended API client for The Sterling Syndicate CRM. */
 
+const LOCAL_API_FALLBACK = "http://127.0.0.1:8000";
+
+/** True when the page is served from a real (non-loopback) host — i.e. a
+ * deployed environment rather than local `vite dev`. Guarded for SSR/test where
+ * `window` may be absent. */
+function isDeployedHost(): boolean {
+  if (typeof window === "undefined" || !window.location) return false;
+  const host = window.location.hostname;
+  return host !== "localhost" && host !== "127.0.0.1" && host !== "[::1]" && host !== "";
+}
+
 // Normalize the configured base URL. Render's `fromService host` injects a bare
 // hostname (e.g. "sterling-api.onrender.com") with no scheme; prepend https so
 // fetch() targets an absolute URL instead of a same-origin relative path.
-export function normalizeApiUrl(raw: string | undefined): string {
-  const url = (raw ?? "http://127.0.0.1:8000").trim();
-  if (!url) return "http://127.0.0.1:8000";
+//
+// When VITE_API_URL is missing/blank we normally fall back to localhost (handy
+// for local dev). But in a DEPLOYED page that localhost fallback can never work
+// and produces a confusing "Cannot reach API" — so there we fall back to the
+// page's own origin instead, which at least surfaces a real, debuggable request
+// and works when the API is reverse-proxied under the same host.
+export function normalizeApiUrl(
+  raw: string | undefined,
+  deployed: boolean = isDeployedHost(),
+): string {
+  const url = (raw ?? "").trim();
+  if (!url) {
+    if (deployed && typeof window !== "undefined" && window.location) {
+      // Bare origin (no trailing slash) — points at the site's own host.
+      return window.location.origin.replace(/\/$/, "");
+    }
+    return LOCAL_API_FALLBACK;
+  }
   if (/^https?:\/\//i.test(url)) return url.replace(/\/$/, "");
   return `https://${url.replace(/\/$/, "")}`;
 }
 
 const API_URL = normalizeApiUrl(import.meta.env.VITE_API_URL);
+
+// Surface a loud, actionable warning if a deployed bundle was built without the
+// API URL baked in — this is the classic "Cannot reach API" misconfiguration.
+if (
+  typeof import.meta.env.VITE_API_URL === "undefined" ||
+  String(import.meta.env.VITE_API_URL).trim() === ""
+) {
+  if (isDeployedHost()) {
+    console.error(
+      "[sterling] VITE_API_URL was not set at build time; falling back to the " +
+        `page origin (${API_URL}). Set VITE_API_URL to the backend URL and rebuild.`,
+    );
+  }
+}
 
 /** Error carrying the HTTP status so callers can distinguish e.g. a 404 from a 500. */
 export class ApiError extends Error {

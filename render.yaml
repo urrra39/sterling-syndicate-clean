@@ -57,12 +57,22 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       # Password-reset links must point at the live SPA (not localhost).
-      # Update if the web service URL ever changes.
+      # Wired dynamically from the frontend service so a fresh Blueprint deploy
+      # (which assigns a new random `-xxxx` suffix) always resolves the real URL
+      # instead of a stale hardcoded one.
       - key: FRONTEND_URL
-        value: https://sterling-web-6u7n.onrender.com
-      # Pin full origin — fromService host alone omits .onrender.com and breaks CORS.
+        fromService:
+          type: web
+          name: sterling-web
+          property: host
+      # CORS allow-list — resolved from the frontend service host. The backend's
+      # cors_origins_list prepends https:// to the bare `host` value Render
+      # injects, so the browser's Origin header matches exactly.
       - key: CORS_ORIGINS
-        value: https://sterling-web-6u7n.onrender.com
+        fromService:
+          type: web
+          name: sterling-web
+          property: host
       - key: SANDBOX_ALLOW_SUBPROCESS_FALLBACK
         value: "false"
       # Single worker: in-memory rate limits are process-local; free tier RAM is tight.
@@ -99,7 +109,16 @@ services:
         value: geolocation=(), microphone=(), camera=(), payment=()
       - path: /*
         name: Content-Security-Policy
-        value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://sterling-api-6u7n.onrender.com https://*.onrender.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+        value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://*.onrender.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
     envVars:
+      # Baked into the bundle at build time (Vite inlines import.meta.env.VITE_*).
+      # Resolved dynamically from the backend service host so the compiled SPA
+      # always targets the real API URL — not a stale hardcoded `-xxxx` suffix
+      # that no longer matches the deployed instance (the root cause of the
+      # "Cannot reach API. Is the backend running?" error in fresh deploys).
+      # The api client's normalizeApiUrl() prepends https:// to this bare host.
       - key: VITE_API_URL
-        value: https://sterling-api-6u7n.onrender.com
+        fromService:
+          type: web
+          name: sterling-api
+          property: host

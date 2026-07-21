@@ -36,9 +36,18 @@ describe("normalizeApiUrl", () => {
     expect(normalizeApiUrl("http://127.0.0.1:8000")).toBe("http://127.0.0.1:8000");
   });
 
-  it("falls back to localhost when unset or empty", () => {
-    expect(normalizeApiUrl(undefined)).toBe("http://127.0.0.1:8000");
-    expect(normalizeApiUrl("   ")).toBe("http://127.0.0.1:8000");
+  it("falls back to localhost when unset or empty (local dev)", () => {
+    // Explicit deployed=false forces the local-dev branch regardless of host.
+    expect(normalizeApiUrl(undefined, false)).toBe("http://127.0.0.1:8000");
+    expect(normalizeApiUrl("   ", false)).toBe("http://127.0.0.1:8000");
+  });
+
+  it("falls back to the page origin (not localhost) when unset on a deployed host", () => {
+    // In jsdom window.location.origin is http://localhost:3000 by default, but
+    // the key behavior is: deployed + unset => origin, never the :8000 fallback.
+    const result = normalizeApiUrl(undefined, true);
+    expect(result).toBe(window.location.origin.replace(/\/$/, ""));
+    expect(result).not.toContain(":8000");
   });
 });
 
