@@ -95,9 +95,6 @@ cp .env.example .env
 .\start-local.ps1
 ```
 
-- API: http://localhost:8000/docs  
-- App: http://localhost:5173  
-- Health: http://localhost:8000/health  
 
 With Docker:
 
