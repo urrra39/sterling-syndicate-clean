@@ -52,7 +52,7 @@ def scout_filter_and_score(
     skills: List[str],
 ) -> ScoutScore:
     """Scout_Agent — Claude Sonnet 5 structured JSON, no CoT. Falls back to hashing."""
-    if provider_available(TaskKind.ANALYTICAL) and settings.anthropic_api_key:
+    if provider_available(TaskKind.ANALYTICAL):
         try:
             return complete_json(
                 system=(
@@ -205,7 +205,7 @@ def negotiator_drafts(
         f"{wrap_untrusted('CLIENT_MESSAGE', safe_incoming)}"
     )
 
-    if provider_available(TaskKind.ANALYTICAL) and settings.anthropic_api_key:
+    if provider_available(TaskKind.ANALYTICAL):
         try:
             result = complete_json(
                 system=system,
@@ -334,7 +334,7 @@ def reflector_learn(
     current_instructions: str,
 ) -> ReflectionUpdate:
     """Reflector_Agent — brief lesson + instruction delta after rejection."""
-    if provider_available(TaskKind.ANALYTICAL) and settings.anthropic_api_key:
+    if provider_available(TaskKind.ANALYTICAL):
         try:
             return complete_json(
                 system=(

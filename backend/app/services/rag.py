@@ -9,7 +9,7 @@ Degrades gracefully if chromadb is not installed.
 import hashlib
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Sequence
 
 import httpx
 

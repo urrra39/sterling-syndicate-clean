@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Pydantic schemas for agent structured outputs (anti-CoT JSON)."""
 
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 

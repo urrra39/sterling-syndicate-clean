@@ -37,10 +37,21 @@ def complete_text(
     temperature: Optional[float] = None,
     max_tokens: int = 1200,
 ) -> str:
-    """Plain-text completion routed by task kind."""
+    """Plain-text completion routed by task kind.
+
+    Analytical work prefers Anthropic, but transparently falls back to OpenAI
+    when only an OpenAI key is configured — so provider_available(ANALYTICAL)
+    (which is True whenever *either* provider is usable) never lies.
+    """
     if kind == TaskKind.ANALYTICAL:
         temp = 0.1 if temperature is None else temperature
-        return _anthropic_text(system, user, temperature=temp, max_tokens=max_tokens)
+        if settings.anthropic_api_key:
+            return _anthropic_text(system, user, temperature=temp, max_tokens=max_tokens)
+        if settings.effective_openai_key:
+            # No Anthropic key but OpenAI is configured — honor the analytical
+            # request on OpenAI (low temperature) rather than raising.
+            return _openai_text(system, user, temperature=temp, max_tokens=max_tokens)
+        raise LLMError("No analytical LLM provider configured (Anthropic or OpenAI)")
     temp = 0.6 if temperature is None else temperature
     return _openai_text(system, user, temperature=temp, max_tokens=max_tokens)
 
@@ -64,9 +75,17 @@ def complete_json(
     full_system = f"{system}\n\n{anti_cot}\n\nJSON Schema:\n{json.dumps(schema_dict)}"
 
     if kind == TaskKind.ANALYTICAL:
-        raw = _anthropic_json(
-            full_system, user, schema_dict, schema_name, model=model
-        )
+        # Prefer Anthropic for structured analytical JSON; fall back to OpenAI's
+        # json_schema mode when only an OpenAI key is present, so callers that
+        # gated on provider_available(ANALYTICAL) actually get a result.
+        if settings.anthropic_api_key:
+            raw = _anthropic_json(
+                full_system, user, schema_dict, schema_name, model=model
+            )
+        elif settings.effective_openai_key:
+            raw = _openai_json(full_system, user, schema_dict, schema_name)
+        else:
+            raise LLMError("No analytical LLM provider configured (Anthropic or OpenAI)")
     else:
         raw = _openai_json(full_system, user, schema_dict, schema_name)
 

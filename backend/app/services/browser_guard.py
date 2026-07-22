@@ -9,12 +9,11 @@ allowed-source or user-driven browser sessions when anti-bot UI appears.
 import base64
 import re
 import threading
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from app.core.config import settings
 from app.services.notify import notify_captcha_intervention
