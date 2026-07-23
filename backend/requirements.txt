@@ -18,7 +18,7 @@ alembic==1.14.0
 pgvector==0.3.6
 
 # Auth & security
-PyJWT>=2.8.0
+PyJWT>=2.13.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.2.1
 cryptography>=48.0.1  # patches PYSEC-2026-35/1284/2141 + GHSA-537c-gmf6-5ccf
