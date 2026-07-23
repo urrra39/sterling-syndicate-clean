@@ -28,7 +28,7 @@ email-validator==2.2.0
 
 # HTTP / utilities
 httpx==0.28.1
-python-dotenv>=1.2.1  # latest published; advisory-listed 1.2.2 not yet on PyPI
+python-dotenv>=1.2.2  # latest published; advisory-listed 1.2.2 not yet on PyPI
 
 # Multi-agent + RAG
 chromadb==0.5.23
