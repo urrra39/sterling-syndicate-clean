@@ -45,7 +45,7 @@ langchain-core>=0.3.85,<0.4
 # red. Since the advisory has ZERO runtime exposure (pytest is a dev/test-only
 # tool, never imported by app code), we keep the verified-green pins rather than
 # gamble CI on an unverifiable major bump. Revisit when a 3.10+ dev env exists.
-pytest==8.3.4
+pytest==9.1.1
 pytest-asyncio==0.25.0
 
 # Local Python 3.9 compatibility (Docker uses 3.11; harmless on 3.11+)
