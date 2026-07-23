@@ -22,7 +22,7 @@ PyJWT>=2.8.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.2.1
 cryptography>=48.0.1  # patches PYSEC-2026-35/1284/2141 + GHSA-537c-gmf6-5ccf
-pydantic[email]==2.10.4
+pydantic[email]==2.13.4
 pydantic-settings==2.7.0
 email-validator==2.2.0
 
