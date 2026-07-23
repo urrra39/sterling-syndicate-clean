@@ -131,7 +131,6 @@ def init_engine() -> Engine:
 
 
 def get_engine() -> Engine:
-    global _engine
     if _engine is None:
         init_engine()
     assert _engine is not None
@@ -145,8 +144,10 @@ def using_sqlite() -> bool:
 
 def ensure_schema() -> None:
     """Create tables. Prefer create_all for SQLite; try Alembic on Postgres."""
-    # Import models so metadata is populated
-    import app.models  # noqa: F401
+    # Import models so their tables register on Base.metadata (side-effect import).
+    import app.models
+
+    _ = app.models  # reference to satisfy static analysis; import is for side effects
 
     eng = get_engine()
     if using_sqlite():

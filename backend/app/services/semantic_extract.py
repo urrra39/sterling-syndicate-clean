@@ -13,7 +13,6 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from app.core.config import settings
 from app.services.llm_router import LLMError, TaskKind, complete_json, provider_available
 
 
@@ -58,7 +57,7 @@ def extract_job_fields(
             description="",
         )
 
-    if provider_available(TaskKind.ANALYTICAL) and settings.anthropic_api_key:
+    if provider_available(TaskKind.ANALYTICAL):
         try:
             return complete_json(
                 system=(

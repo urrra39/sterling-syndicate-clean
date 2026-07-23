@@ -3,9 +3,8 @@ from __future__ import annotations
 """Portfolio RAG ingestion endpoints."""
 
 from typing import List, Optional
-from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
