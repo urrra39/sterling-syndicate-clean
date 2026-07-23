@@ -12,7 +12,7 @@ python-multipart>=0.0.18
 greenlet==3.1.1
 
 # Database
-sqlalchemy==2.0.36
+sqlalchemy==2.0.51
 psycopg[binary]==3.2.3
 alembic==1.14.0
 pgvector==0.3.6
